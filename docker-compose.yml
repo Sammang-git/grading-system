@@ -1,0 +1,95 @@
+# =====================================================
+# CS425 Assignment Grading System - Docker Compose
+# =====================================================
+# This file orchestrates all containers for the system.
+# 
+# Usage:
+#   docker-compose up -d        # Start all services
+#   docker-compose down         # Stop all services
+#   docker-compose logs -f      # View logs
+#   docker-compose exec app bash # Access PHP container
+#
+# TODO for students:
+# - Add Redis for caching
+# - Add phpMyAdmin for database management
+# - Configure for production deployment
+# =====================================================
+
+version: '3.8'
+
+services:
+  # PHP Application
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: grading_app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./app:/var/www/html
+      - ./uploads:/var/www/html/uploads
+    environment:
+      - DOCKER_ENV=true
+      - APP_ENV=development
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=grading_system
+      - DB_USER=grading_user
+      - DB_PASS=grading_password
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - grading_network
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: grading_mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=grading_system
+      - MYSQL_USER=grading_user
+      - MYSQL_PASSWORD=grading_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - grading_network
+
+  # phpMyAdmin (Optional - for database management)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: grading_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      - PMA_HOST=mysql
+      - PMA_USER=grading_user
+      - PMA_PASSWORD=grading_password
+    depends_on:
+      - mysql
+    networks:
+      - grading_network
+
+# Named volumes
+volumes:
+  mysql_data:
+    driver: local
+
+# Networks
+networks:
+  grading_network:
+    driver: bridge
